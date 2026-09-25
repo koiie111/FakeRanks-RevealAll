@@ -89,6 +89,10 @@ jobs:
           apt-get install -y clang-16
           cd ambuild
           python3 setup.py install
+      - name: Test KHook lifecycle
+        run: |
+          clang++-16 -std=c++20 -I plugin -I mmsource-2.0/third_party/khook/include plugin/tests/khook_lifecycle.cpp -o /tmp/khook_lifecycle
+          /tmp/khook_lifecycle
       - name: Build Linux x86_64
         working-directory: plugin
         run: |

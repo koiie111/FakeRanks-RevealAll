@@ -50,7 +50,7 @@ The installation files are in `build/package/`.
 
 ## Validation
 
-The fork was compiled in a Linux Docker container with Metamod `2.0.0.1469` and HL2SDK `6315f0104d22eb9ea3c33d0505dbe14e8b193bc3`. A successful build is not an in-game test. Validate on a CS2 server with a connected client and a rank-setting plugin:
+The fork was compiled in a Linux Docker container with Metamod `2.0.0.1469` and HL2SDK `6315f0104d22eb9ea3c33d0505dbe14e8b193bc3`. The KHook lifecycle regression test uses the real KHook header with a mock host dispatcher and checks attachment, callback delivery, instance filtering, removal, reattachment, and destruction; it also runs in CI. A successful build is not an in-game test. Validate on a CS2 server with a connected client and a rank-setting plugin:
 
 1. Open/close TAB repeatedly, including brief presses. Only the requesting client should receive the reveal message.
 2. Check living players, dead players and spectators with a valid controlled pawn.
@@ -58,3 +58,4 @@ The fork was compiled in a Linux Docker container with Metamod `2.0.0.1469` and 
 4. Check logs for schema lookup failures after future CS2 updates. The fixed service offset and SDK interfaces can still require updates even when automatic compilation succeeds.
 
 Original code credits: Cruze and Pisex (LR-FakeRanks / ServerPlayersListFix); included SDK helpers are derived from CS2Fixes. GPL-3.0.
+
