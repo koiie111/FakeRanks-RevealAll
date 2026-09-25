@@ -4,6 +4,17 @@ Linux x86_64 fork of [Cruze03/FakeRanks-RevealAll](https://github.com/Cruze03/Fa
 
 This plugin sends `CCSUsrMsg_ServerRankRevealAll` to the player opening the scoreboard. It displays ranks assigned by another plugin; it does not fetch real matchmaking ranks or assign ranks itself.
 
+## Fix in 1.1.5
+
+Version 1.1.4 incorrectly treated a missing user-message descriptor during `Load()` as proof that the message was unavailable. The engine's registry may not be populated at this stage. Version 1.1.5 loads normally and resolves the message on a running map, retries once per second, and clears the cached descriptor on map changes. Lookup uses ID `350` first and `ServerRankRevealAll` by name as a fallback, validating the returned name before sending.
+
+Server-console diagnostics:
+
+- `fakeranks_status`: reports whether the engine context/message is ready, lookup attempts, frame callbacks, observed TAB edges and posted recipient count.
+- `fakeranks_reveal <slot>`: manually posts the reveal message to one connected player (zero-based slot), bypassing TAB detection. This does not assign ranks or prove the client rendered them.
+
+If the message remains `waiting` after a map is running, collect `fakeranks_status`, `version` and `meta version`. If manual reveal works but TAB does not, investigate button/pawn state rather than replacing the rank-setting plugin. These commands are restricted to the server console/RCON.
+
 ## Fix in 1.1.4
 
 Upstream commit `ab9cda8` switched to KHook but only constructed the virtual hooks. Neither `KHook::Virtual::Add()` nor an equivalent registration was called. Consequently `GameFrame` and `StartupServer` never reached the plugin.
@@ -11,7 +22,7 @@ Upstream commit `ab9cda8` switched to KHook but only constructed the virtual hoo
 - Attach hooks after the engine interfaces are acquired; detach them on unload.
 - Read scoreboard state every frame instead of every twelfth tick, so short observed presses are not discarded by polling.
 - Reset button history on map shutdown/start, unavailable players, and pause/resume.
-- Validate the rank-reveal message at load time instead of dereferencing a missing descriptor.
+- Guard against a missing message descriptor (the premature load-time check was corrected in 1.1.5).
 - Count all recipient slots rather than only the first 64 bits; mark the message as having no predicted player.
 
 The scoreboard mask remains `1ULL << 33`. Entity fields are resolved by name through the game's schema system, rather than fixed pawn/button offsets. The Linux `GameEntitySystem` service offset remains **80**, matching [CounterStrikeSharp gamedata](https://github.com/roflmuffin/CounterStrikeSharp/blob/751eb0c8c0f83b566fb4de869c1a6fffdb7a008c/configs/addons/counterstrikesharp/gamedata/gamedata.json#L229). No new byte signatures were needed for this fix. The [signature tracker](https://github.com/ianlucas/cs2-signatures) was checked; the current [CS2 SDK site](https://www.cs2-sdk.com/) dump is Windows (build 14183), so its addresses are not used as Linux offsets.
@@ -58,4 +69,3 @@ The fork was compiled in a Linux Docker container with Metamod `2.0.0.1469` and 
 4. Check logs for schema lookup failures after future CS2 updates. The fixed service offset and SDK interfaces can still require updates even when automatic compilation succeeds.
 
 Original code credits: Cruze and Pisex (LR-FakeRanks / ServerPlayersListFix); included SDK helpers are derived from CS2Fixes. GPL-3.0.
-

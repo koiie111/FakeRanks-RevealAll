@@ -93,6 +93,8 @@ jobs:
         run: |
           clang++-16 -std=c++20 -I plugin -I mmsource-2.0/third_party/khook/include plugin/tests/khook_lifecycle.cpp -o /tmp/khook_lifecycle
           /tmp/khook_lifecycle
+          clang++-16 -std=c++20 -I plugin plugin/tests/deferred_lookup.cpp -o /tmp/deferred_lookup
+          /tmp/deferred_lookup
       - name: Build Linux x86_64
         working-directory: plugin
         run: |
