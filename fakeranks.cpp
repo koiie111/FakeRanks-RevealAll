@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <algorithm>
+#include <iterator>
 #include "fakeranks.h"
 #include "utils/module.h"
 #include "schemasystem/schemasystem.h"
@@ -25,7 +27,14 @@ CGlobalVars* g_pGlobals = nullptr;
 CGameEntitySystem* g_pEntitySystem = nullptr;
 IGameEventSystem* g_pGameEventSystem = nullptr;
 
-uint64_t g_iOldButtons[65];
+uint64_t g_iOldButtons[ABSOLUTE_PLAYER_LIMIT]{};
+static INetworkMessageInternal* g_pRankRevealMessage = nullptr;
+static bool g_bPaused = false;
+
+static void ResetButtons()
+{
+    std::fill(std::begin(g_iOldButtons), std::end(g_iOldButtons), 0);
+}
 
 CGlobalVars* GetGameGlobals()
 {
@@ -63,7 +72,19 @@ bool FakeRank_RevealAll::Load(PluginId id, ISmmAPI* ismm, char* error, size_t ma
     GET_V_IFACE_CURRENT(GetEngineFactory, g_pNetworkServerService, INetworkServerService, NETWORKSERVERSERVICE_INTERFACE_VERSION);
     GET_V_IFACE_CURRENT(GetEngineFactory, g_pGameResourceServiceServer, IGameResourceService, GAMERESOURCESERVICESERVER_INTERFACE_VERSION);
 
+    g_pRankRevealMessage = g_pNetworkMessages->FindNetworkMessagePartial("CCSUsrMsg_ServerRankRevealAll");
+    if (!g_pRankRevealMessage)
+    {
+        snprintf(error, maxlen, "CCSUsrMsg_ServerRankRevealAll is unavailable in this CS2 build");
+        return false;
+    }
+
     g_SMAPI->AddListener(this, this);
+
+    // Constructing KHook::Virtual does not attach it to an engine instance.
+    for (auto* hook : GetKHookList()) hook->Add();
+    ResetButtons();
+    g_bPaused = false;
 
     ConVar_Register(FCVAR_RELEASE | FCVAR_CLIENT_CAN_EXECUTE | FCVAR_GAMEDLL);
 
@@ -76,31 +97,41 @@ bool FakeRank_RevealAll::Load(PluginId id, ISmmAPI* ismm, char* error, size_t ma
     return true;
 }
 
-bool FakeRank_RevealAll::Unload(char* error, size_t maxlen) { return true; }
+bool FakeRank_RevealAll::Unload(char* error, size_t maxlen)
+{
+    for (auto* hook : GetKHookList()) hook->Remove();
+    ConVar_Unregister();
+    g_pEntitySystem = nullptr;
+    g_pGlobals = nullptr;
+    g_pRankRevealMessage = nullptr;
+    ResetButtons();
+    return true;
+}
 
 KHook::Return<void> Hook_StartupServer_Post(INetworkServerService* pThis, const GameSessionConfiguration_t& config, ISource2WorldSession*, const char*)
 {
     g_pEntitySystem = GameEntitySystem();
     g_pGlobals = GetGameGlobals();
+    ResetButtons();
     return { KHook::Action::Ignore };
 }
 
 KHook::Return<void> Hook_GameFrame_Post(IServerGameDLL* pThis, bool simulating, bool bFirstTick, bool bLastTick)
 {
-    if (!g_pEntitySystem || !g_pGlobals) return { KHook::Action::Ignore };
+    if (g_bPaused || !g_pEntitySystem || !g_pGlobals || !g_pRankRevealMessage) return { KHook::Action::Ignore };
 
-    if (g_pGlobals->tickcount % 12 != 0) return { KHook::Action::Ignore };
-
-    int maxClients = g_pGlobals->maxClients > 65 ? 65 : g_pGlobals->maxClients;
+    int maxClients = std::clamp(g_pGlobals->maxClients, 0, ABSOLUTE_PLAYER_LIMIT);
     CRecipientFilter filter;
 
     for (int i = 0; i < maxClients; i++)
     {
         CCSPlayerController* pPlayerController = (CCSPlayerController*)g_pEntitySystem->GetEntityInstance((CEntityIndex)(i + 1));
 
-        if (!pPlayerController) continue;
-
-        if (!pPlayerController->IsConnected() || !pPlayerController->m_hPawn() || !pPlayerController->m_hPawn()->m_pMovementServices()) continue;
+        if (!pPlayerController || !pPlayerController->IsConnected() || !pPlayerController->m_hPawn() || !pPlayerController->m_hPawn()->m_pMovementServices())
+        {
+            g_iOldButtons[i] = 0;
+            continue;
+        }
 
         uint64_t iButtons = pPlayerController->m_hPawn()->m_pMovementServices()->m_nButtons().m_pButtonStates()[0];
         if ((iButtons & PlayerButtons_t::Scoreboard) && !(g_iOldButtons[i] & PlayerButtons_t::Scoreboard))
@@ -112,9 +143,9 @@ KHook::Return<void> Hook_GameFrame_Post(IServerGameDLL* pThis, bool simulating, 
 
     if (filter.GetRecipientCount() > 0)
     {
-        INetworkMessageInternal* netmsg = g_pNetworkMessages->FindNetworkMessagePartial("CCSUsrMsg_ServerRankRevealAll");
-        CNetMessage* msg = netmsg->AllocateMessage();
-        g_pGameEventSystem->PostEventAbstract(0, false, &filter, netmsg, msg, 0);
+        CNetMessage* msg = g_pRankRevealMessage->AllocateMessage();
+        if (!msg) return { KHook::Action::Ignore };
+        g_pGameEventSystem->PostEventAbstract(0, false, &filter, g_pRankRevealMessage, msg, 0);
         delete msg;
     }
     return { KHook::Action::Ignore };
@@ -127,15 +158,20 @@ void FakeRank_RevealAll::OnLevelInit(
 {
 }
 
-void FakeRank_RevealAll::OnLevelShutdown() {}
+void FakeRank_RevealAll::OnLevelShutdown()
+{
+    g_pEntitySystem = nullptr;
+    g_pGlobals = nullptr;
+    ResetButtons();
+}
 
-bool FakeRank_RevealAll::Pause(char* error, size_t maxlen) { return true; }
+bool FakeRank_RevealAll::Pause(char* error, size_t maxlen) { g_bPaused = true; ResetButtons(); return true; }
 
-bool FakeRank_RevealAll::Unpause(char* error, size_t maxlen) { return true; }
+bool FakeRank_RevealAll::Unpause(char* error, size_t maxlen) { g_bPaused = false; ResetButtons(); return true; }
 
 const char* FakeRank_RevealAll::GetLicense() { return "GPLv3"; }
 
-const char* FakeRank_RevealAll::GetVersion() { return "1.1.3"; }
+const char* FakeRank_RevealAll::GetVersion() { return "1.1.4"; }
 
 const char* FakeRank_RevealAll::GetDate() { return __DATE__; }
 
@@ -147,4 +183,4 @@ const char* FakeRank_RevealAll::GetDescription() { return "Reveals all fake rank
 
 const char* FakeRank_RevealAll::GetName() { return "FakeRanks - Reveal All"; }
 
-const char* FakeRank_RevealAll::GetURL() { return "https://github.com/cruze03"; }
+const char* FakeRank_RevealAll::GetURL() { return "https://github.com/koiie111/FakeRanks-RevealAll"; }

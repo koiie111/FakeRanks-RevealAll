@@ -21,6 +21,10 @@
 
 class CKHookBase
 {
+  public:
+    virtual ~CKHookBase() = default;
+    virtual void Add() = 0;
+    virtual void Remove() = 0;
 };
 
 extern std::vector<CKHookBase*>& GetKHookList();
@@ -37,6 +41,16 @@ template <typename CLASS, typename RETURN, typename... ARGS> class CKHookVirtual
     }
 
     ~CKHookVirtual()
+    {
+        Remove();
+    }
+
+    void Add() override
+    {
+        if (m_pInstance && !m_hook.IsActive()) m_hook.Add(m_pInstance);
+    }
+
+    void Remove() override
     {
         if (m_hook.IsActive()) m_hook.Remove(m_pInstance);
     }

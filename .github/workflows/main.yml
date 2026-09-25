@@ -1,147 +1,148 @@
-name: CI
+name: Linux build
 
 on:
   push:
-    tags:
-      - '*'
-    paths-ignore:
-    - LICENSE
-    - README.md
+    branches: [main]
+    tags: ['v*']
   pull_request:
-    paths-ignore:
-    - LICENSE
-    - README.md
+  workflow_dispatch:
+  schedule:
+    - cron: '23 */6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build
-    runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        include:
-          - os: windows-latest
-          - os: ubuntu-latest
-            container: registry.gitlab.steamos.cloud/steamrt/sniper/sdk
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      metamod: ${{ steps.release.outputs.metamod }}
+      tag: ${{ steps.release.outputs.tag }}
+      build: ${{ steps.release.outputs.build }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        id: release
         with:
-          path: ${{ github.event.repository.name }}
-          submodules: recursive
-          fetch-depth: 0
+          script: |
+            const {data: releases} = await github.rest.repos.listReleases({
+              owner: 'alliedmodders', repo: 'metamod-source', per_page: 100
+            });
+            const release = releases.find(r => !r.draft && r.prerelease && /^2\.0\./.test(r.tag_name));
+            if (!release) throw new Error('No Metamod 2.0 prerelease found');
+            const tag = context.ref.startsWith('refs/tags/')
+              ? context.ref.slice(10)
+              : `build-${context.sha.slice(0, 12)}-mm-${release.tag_name}`;
+            core.setOutput('metamod', release.tag_name);
+            core.setOutput('tag', tag);
+            let build = true;
+            if (context.eventName === 'schedule') {
+              try {
+                const {data: existing} = await github.rest.repos.getReleaseByTag({...context.repo, tag});
+                // A draft or a release without an uploaded archive is not a successful build.
+                build = existing.draft || !existing.assets.some(a => a.name.endsWith('-linux.tar.gz'));
+              } catch (e) {
+                if (e.status !== 404) throw e;
+              }
+            }
+            core.setOutput('build', String(build));
+            core.summary.addRaw(`Metamod: ${release.tag_name}; build: ${build}`).write();
 
-      - name: Checkout Metamod
-        uses: actions/checkout@v4
+  build:
+    needs: resolve
+    if: needs.resolve.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    container: registry.gitlab.steamos.cloud/steamrt/sniper/sdk
+    env:
+      CC: clang-16
+      CXX: clang++-16
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+          submodules: recursive
+      - uses: actions/checkout@v4
         with:
           repository: alliedmodders/metamod-source
-          ref: master
+          ref: ${{ needs.resolve.outputs.metamod }}
           path: mmsource-2.0
           submodules: recursive
-
-      - name: Checkout HL2SDK
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: alliedmodders/hl2sdk
           ref: cs2
           path: hl2sdk-cs2
-
-      - name: Checkout HL2SDK Manifests
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: alliedmodders/hl2sdk-manifests
-          ref: master
           path: hl2sdk-manifests
-# ------------ Windows ------------
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        if: runner.os == 'Windows'
-        with:
-          python-version: "3.11"
-
-      - name: Install pip
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: curl https://bootstrap.pypa.io/pip/3.6/get-pip.py | python
-
-      - name: Clone AMBuild
-        uses: actions/checkout@v6
-        if: runner.os == 'Windows'
-        with:
-          repository: alliedmodders/ambuild
-          path: ./ambuild
-
-      - name: Install AMBuild
-        if: runner.os == 'Windows'
-        run: |
-          python -m pip install ./ambuild
-# ------------ Linux ------------
-      - name: Checkout AMBuild
-        uses: actions/checkout@v4
-        if: runner.os == 'Linux'
+      - uses: actions/checkout@v4
         with:
           repository: alliedmodders/ambuild
           path: ambuild
-
-      - name: Install AMBuild
-        if: runner.os == 'Linux'
+      - name: Install build tools
         run: |
-          cd ambuild && python setup.py install && cd ..
-# -------------------------------
-
-      - name: Install Clang 16
-        if: matrix.os == 'ubuntu-latest'
+          apt-get update
+          apt-get install -y clang-16
+          cd ambuild
+          python3 setup.py install
+      - name: Build Linux x86_64
+        working-directory: plugin
         run: |
-          apt update && apt install -y clang-16
-          ln -sf /usr/bin/clang-16 /usr/bin/clang && ln -sf /usr/bin/clang++-16 /usr/bin/clang++
-
-      - name: Build
-        working-directory: ${{ github.event.repository.name }}
-        shell: bash
-        run: |
-          mkdir build && cd build
-          python ../configure.py --enable-optimize --symbol-files --sdks cs2 --hl2sdk-manifests hl2sdk-manifests
+          mkdir build
+          cd build
+          python3 ../configure.py --enable-optimize --symbol-files --targets x86_64 --sdks cs2 --hl2sdk-manifests "$GITHUB_WORKSPACE/hl2sdk-manifests"
           ambuild
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          test -s package/addons/fakeranks/bin/linuxsteamrt64/fakeranks.so
+          test -s package/addons/metamod/fakeranks.vdf
+      - name: Record dependency revisions
+        run: |
+          for repo in plugin mmsource-2.0 hl2sdk-cs2 hl2sdk-manifests ambuild; do
+            printf '%s ' "$repo"
+            git -C "$repo" rev-parse HEAD
+          done > build-info.txt
+          cat build-info.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os }}
-          path: ${{ github.event.repository.name }}/build/package
+          name: Linux
+          path: plugin/build/package
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-info
+          path: build-info.txt
 
   release:
-    name: Release
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: [resolve, build]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Package
-        run: |
-          version=`echo $GITHUB_REF | sed "s/refs\/tags\///"`
-          ls -Rall
-          if [ -d "./Linux/" ]; then
-            cd ./Linux/
-            tar -czf ../${{ github.event.repository.name }}-${version}-linux.tar.gz *
-            cd -
-          fi
-          if [ -d "./Windows/" ]; then
-            cd ./Windows/
-            zip -r ../${{ github.event.repository.name }}-${version}-windows.zip *
-            cd -
-          fi
-
-      - name: Release
-        uses: svenstaro/upload-release-action@v2
+      - uses: actions/download-artifact@v4
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.event.repository.name }}-*
-          tag: ${{ github.ref }}
-          file_glob: true
+          name: Linux
+          path: Linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-info
+      - name: Package
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: tar -czf "FakeRanks-RevealAll-${RELEASE_TAG}-linux.tar.gz" -C Linux addons
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          METAMOD: ${{ needs.resolve.outputs.metamod }}
+        run: |
+          printf 'Linux x86_64 build against Metamod %s.\n\nExtract the archive into game/csgo. Ranks must be assigned by another plugin.\n\nDependency revisions:\n' "$METAMOD" > notes.txt
+          cat build-info.txt >> notes.txt
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes-file notes.txt --prerelease
+          fi
+          gh release upload "$RELEASE_TAG" "FakeRanks-RevealAll-${RELEASE_TAG}-linux.tar.gz" build-info.txt --clobber

@@ -28,7 +28,7 @@ class CRecipientFilter : public IRecipientFilter
     NetChannelBufType_t GetNetworkBufType(void) const override { return m_nBufType; }
     bool IsInitMessage(void) const override { return m_bInitMessage; }
     const CPlayerBitVec& GetRecipients(void) const override { return m_Recipients; }
-    CPlayerSlot GetPredictedPlayerSlot(void) const override { return m_Recipients.Get(0); }
+    CPlayerSlot GetPredictedPlayerSlot(void) const override { return CPlayerSlot(-1); }
 
     void AddRecipient(CPlayerSlot slot)
     {
@@ -37,9 +37,10 @@ class CRecipientFilter : public IRecipientFilter
 
     int GetRecipientCount()
     {
-        const uint64 bits = *reinterpret_cast<const uint64*>(&GetRecipients());
-
-        return std::popcount(bits);
+        int count = 0;
+        for (int i = 0; i < ABSOLUTE_PLAYER_LIMIT; ++i)
+            if (m_Recipients.Get(i)) ++count;
+        return count;
     }
 
   protected:
