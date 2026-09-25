@@ -85,7 +85,7 @@ static bool SendRankReveal(CRecipientFilter& filter)
 CON_COMMAND_F(fakeranks_status, "Print FakeRanks runtime diagnostics (server console only)", FCVAR_GAMEDLL)
 {
     if (context.GetPlayerSlot().Get() != -1) return;
-    Msg("[FakeRanks] version=1.1.5 paused=%d globals=%d entities=%d message=%s attempts=%u frames=%llu tab_presses=%llu sent_recipients=%llu\n",
+    Msg("[FakeRanks] version=1.1.6 paused=%d globals=%d entities=%d message=%s attempts=%u frames=%llu tab_presses=%llu sent_recipients=%llu\n",
         g_bPaused, g_pGlobals != nullptr, g_pEntitySystem != nullptr,
         g_RankRevealMessage.Get() ? "ready" : "waiting", g_RankRevealMessage.Attempts(),
         g_nFrames, g_nScoreboardPresses, g_nRevealRecipients);
@@ -200,6 +200,8 @@ KHook::Return<void> Hook_GameFrame_Post(IServerGameDLL* pThis, bool simulating, 
 {
     ++g_nFrames;
     if (g_bPaused || !g_pEntitySystem || !g_pGlobals) return { KHook::Action::Ignore };
+    // Preserve upstream's polling cadence: inspect TAB every twelfth tick.
+    if (g_pGlobals->tickcount % 12 != 0) return { KHook::Action::Ignore };
     const bool wasReady = g_RankRevealMessage.Get() != nullptr;
     const bool messageReady = ResolveRankRevealMessage() != nullptr;
     // A held scoreboard should be revealed when the registry becomes ready.
@@ -255,7 +257,7 @@ bool FakeRank_RevealAll::Unpause(char* error, size_t maxlen) { g_bPaused = false
 
 const char* FakeRank_RevealAll::GetLicense() { return "GPLv3"; }
 
-const char* FakeRank_RevealAll::GetVersion() { return "1.1.5"; }
+const char* FakeRank_RevealAll::GetVersion() { return "1.1.6"; }
 
 const char* FakeRank_RevealAll::GetDate() { return __DATE__; }
 

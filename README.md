@@ -4,6 +4,10 @@ Linux x86_64 fork of [Cruze03/FakeRanks-RevealAll](https://github.com/Cruze03/Fa
 
 This plugin sends `CCSUsrMsg_ServerRankRevealAll` to the player opening the scoreboard. It displays ranks assigned by another plugin; it does not fetch real matchmaking ranks or assign ranks itself.
 
+## Change in 1.1.6
+
+Restores upstream's TAB polling cadence (`tickcount % 12 == 0`). Messages are still sent only on an observed press, not repeatedly while TAB is held. Hook lifecycle fixes and deferred message lookup from 1.1.5 are retained. Brief presses or releases between polls can be missed, as in upstream.
+
 ## Fix in 1.1.5
 
 Version 1.1.4 incorrectly treated a missing user-message descriptor during `Load()` as proof that the message was unavailable. The engine's registry may not be populated at this stage. Version 1.1.5 loads normally and resolves the message on a running map, retries once per second, and clears the cached descriptor on map changes. Lookup uses ID `350` first and `ServerRankRevealAll` by name as a fallback, validating the returned name before sending.
