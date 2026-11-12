@@ -3,10 +3,13 @@
 
 #include <ISmmPlugin.h>
 #include <igameevents.h>
-#include "engine/igameeventsystem.h"
+#include "engine2/igameeventsystem.h"
 #include "irecipientfilter.h"
 #include "khook.hpp"
-#include "iserver.h"
+#include "engine2/isource2server.h"
+#include "gameentitysystem.h"
+#include "engine2/inetworkserverservice.h"
+#include "engine2/networkgameserverbase.h"
 #include <bit>
 
 class CRecipientFilter : public IRecipientFilter
@@ -49,7 +52,7 @@ class CRecipientFilter : public IRecipientFilter
     CPlayerBitVec m_Recipients;
 };
 
-KHook::Return<void> Hook_GameFrame_Post(IServerGameDLL* pThis, bool simulating, bool bFirstTick, bool bLastTick);
+KHook::Return<void> Hook_GameFrame_Post(ISource2Server* pThis, bool simulating, bool bFirstTick, bool bLastTick);
 KHook::Return<void> Hook_StartupServer_Post(INetworkServerService* pThis, const GameSessionConfiguration_t& config, ISource2WorldSession*, const char*);
 
 class FakeRank_RevealAll : public ISmmPlugin, public IMetamodListener

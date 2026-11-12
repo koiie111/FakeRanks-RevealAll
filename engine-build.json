@@ -1,0 +1,9 @@
+{
+  "engine": "CS2 1.41.9.7 / ServerVersion 2000943",
+  "sdk_repository": "https://github.com/alliedmodders/s2sdk",
+  "sdk_commit": "81020d1a26b9d4321b9f030c96929ec18e8c0cff",
+  "metamod_headers_commit": "170058a2f0dbd58106b7c76bfe88a94672295356",
+  "platform": "linux-x86_64",
+  "compiler": "clang 14",
+  "configuration": "optimized release"
+}
