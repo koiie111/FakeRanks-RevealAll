@@ -72,8 +72,8 @@ jobs:
           submodules: recursive
       - uses: actions/checkout@v4
         with:
-          repository: alliedmodders/hl2sdk
-          ref: cs2
+          repository: alliedmodders/s2sdk
+          ref: 81020d1a26b9d4321b9f030c96929ec18e8c0cff
           path: hl2sdk-cs2
       - uses: actions/checkout@v4
         with:

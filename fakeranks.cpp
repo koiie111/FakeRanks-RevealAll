@@ -1,3 +1,4 @@
+#include "utils/network_abi.h"
 #include <stdio.h>
 #include <algorithm>
 #include <iterator>
@@ -13,21 +14,18 @@
 #include "cs2_sdk/entity/cbaseplayercontroller.h"
 #include <networksystem/inetworkserializer.h>
 #include <networksystem/inetworkmessages.h>
-#include <inetchannel.h>
+#include <networksystem/inetchannel.h>
 #include "protobuf/generated/cstrike15_usermessages.pb.h"
 
-class GameSessionConfiguration_t
-{
-};
 
-KHOOK_VIRTUAL(GameFrame, &IServerGameDLL::GameFrame, g_pSource2Server, nullptr, Hook_GameFrame_Post);
+KHOOK_VIRTUAL(GameFrame, &ISource2Server::GameFrame, g_pSource2Server, nullptr, Hook_GameFrame_Post);
 KHOOK_VIRTUAL(StartupServer, &INetworkServerService::StartupServer, g_pNetworkServerService, nullptr, Hook_StartupServer_Post);
 
 FakeRank_RevealAll g_FakeRanks;
 PLUGIN_EXPOSE(FakeRank_RevealAll, g_FakeRanks);
 
 CGlobalVars* g_pGlobals = nullptr;
-CGameEntitySystem* g_pEntitySystem = nullptr;
+CEntitySystem* g_pEntitySystem = nullptr;
 IGameEventSystem* g_pGameEventSystem = nullptr;
 
 uint64_t g_iOldButtons[ABSOLUTE_PLAYER_LIMIT]{};
@@ -85,7 +83,7 @@ static bool SendRankReveal(CRecipientFilter& filter)
 CON_COMMAND_F(fakeranks_status, "Print FakeRanks runtime diagnostics (server console only)", FCVAR_GAMEDLL)
 {
     if (context.GetPlayerSlot().Get() != -1) return;
-    Msg("[FakeRanks] version=1.1.6 paused=%d globals=%d entities=%d message=%s attempts=%u frames=%llu tab_presses=%llu sent_recipients=%llu\n",
+    Msg("[FakeRanks] version=1.1.7-14197 paused=%d globals=%d entities=%d message=%s attempts=%u frames=%llu tab_presses=%llu sent_recipients=%llu\n",
         g_bPaused, g_pGlobals != nullptr, g_pEntitySystem != nullptr,
         g_RankRevealMessage.Get() ? "ready" : "waiting", g_RankRevealMessage.Attempts(),
         g_nFrames, g_nScoreboardPresses, g_nRevealRecipients);
@@ -119,22 +117,14 @@ CON_COMMAND_F(fakeranks_reveal, "Send rank reveal to a connected player: fakeran
 
 CGlobalVars* GetGameGlobals()
 {
-    INetworkGameServer* srv = g_pNetworkServerService->GetIGameServer();
+    CNetworkGameServerBase* srv = g_pNetworkServerService->GetIGameServer();
 
     if (!srv) return nullptr;
 
     return g_pNetworkServerService->GetIGameServer()->GetGlobals();
 }
 
-CGameEntitySystem* GameEntitySystem()
-{
-#ifdef WIN32
-    static int offset = 88;
-#else
-    static int offset = 80;
-#endif
-    return *reinterpret_cast<CGameEntitySystem**>((uintptr_t)(g_pGameResourceServiceServer) + offset);
-}
+
 
 std::vector<CKHookBase*>& GetKHookList()
 {
@@ -146,7 +136,7 @@ bool FakeRank_RevealAll::Load(PluginId id, ISmmAPI* ismm, char* error, size_t ma
 {
     PLUGIN_SAVEVARS();
 
-    GET_V_IFACE_ANY(GetServerFactory, g_pSource2Server, IServerGameDLL, INTERFACEVERSION_SERVERGAMEDLL);
+    GET_V_IFACE_ANY(GetServerFactory, g_pSource2Server, ISource2Server, SOURCE2SERVER_INTERFACE_VERSION);
     GET_V_IFACE_CURRENT(GetEngineFactory, g_pSchemaSystem, ISchemaSystem, SCHEMASYSTEM_INTERFACE_VERSION);
     GET_V_IFACE_CURRENT(GetEngineFactory, g_pNetworkMessages, INetworkMessages, NETWORKMESSAGES_INTERFACE_VERSION);
     GET_V_IFACE_CURRENT(GetEngineFactory, g_pGameEventSystem, IGameEventSystem, GAMEEVENTSYSTEM_INTERFACE_VERSION);
@@ -196,7 +186,7 @@ KHook::Return<void> Hook_StartupServer_Post(INetworkServerService* pThis, const 
     return { KHook::Action::Ignore };
 }
 
-KHook::Return<void> Hook_GameFrame_Post(IServerGameDLL* pThis, bool simulating, bool bFirstTick, bool bLastTick)
+KHook::Return<void> Hook_GameFrame_Post(ISource2Server* pThis, bool simulating, bool bFirstTick, bool bLastTick)
 {
     ++g_nFrames;
     if (g_bPaused || !g_pEntitySystem || !g_pGlobals) return { KHook::Action::Ignore };
@@ -257,7 +247,7 @@ bool FakeRank_RevealAll::Unpause(char* error, size_t maxlen) { g_bPaused = false
 
 const char* FakeRank_RevealAll::GetLicense() { return "GPLv3"; }
 
-const char* FakeRank_RevealAll::GetVersion() { return "1.1.6"; }
+const char* FakeRank_RevealAll::GetVersion() { return "1.1.7-14197"; }
 
 const char* FakeRank_RevealAll::GetDate() { return __DATE__; }
 

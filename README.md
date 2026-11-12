@@ -4,6 +4,19 @@ Linux x86_64 fork of [Cruze03/FakeRanks-RevealAll](https://github.com/Cruze03/Fa
 
 This plugin sends `CCSUsrMsg_ServerRankRevealAll` to the player opening the scoreboard. It displays ranks assigned by another plugin; it does not fetch real matchmaking ranks or assign ranks itself.
 
+## Change in 1.1.7-14197
+
+Ports the native module to CS2 1.41.9.7's network-message ABI using the pinned
+`s2sdk` revision in `engine-build.json`. Message handles are plain 40-byte records;
+old virtual calls can hang or crash the engine. A compile-time ABI guard rejects
+old SDK headers. Server interfaces, schema field names and tier0 source paths
+are updated, and the SDK now supplies the entity-system accessor. Existing TAB
+polling, deferred lookup, recipient filtering and hook teardown are preserved.
+
+Linux engine checks cover clean startup, late load, map transition, unload/reload
+and posting ID 350 to connected bots. Posting a message does not prove that a
+human client rendered its ranks; use the validation steps below for that check.
+
 ## Change in 1.1.6
 
 Restores upstream's TAB polling cadence (`tickcount % 12 == 0`). Messages are still sent only on an observed press, not repeatedly while TAB is held. Hook lifecycle fixes and deferred message lookup from 1.1.5 are retained. Brief presses or releases between polls can be missed, as in upstream.
@@ -46,13 +59,13 @@ Use Metamod 2.0 matching the release notes or newer, and a separate plugin that 
 
 [GitHub Actions](https://github.com/koiie111/FakeRanks-RevealAll/actions) builds on pushes to `main`, `v*` tags, pull requests, and manual dispatch. Only Linux x86_64 is built, using Steam Runtime Sniper and Clang 16.
 
-Every six hours, the workflow checks the newest published Metamod **2.0 prerelease**. It checks out that exact release tag, builds against current `hl2sdk` (`cs2`) and manifests, and publishes a prerelease archive. The automatic tag includes the plugin commit and Metamod version. A scheduled run skips a combination with an existing archive; a failed build is retried on the next run. Pull requests produce artifacts without publishing releases. `build-info.txt` records all dependency commits separately from the installation archive.
+Every six hours, the workflow checks the newest published Metamod **2.0 prerelease**. It checks out that exact release tag, builds against the pinned `s2sdk` revision and current manifests, and publishes a prerelease archive. The automatic tag includes the plugin commit and Metamod version. A scheduled run skips a combination with an existing archive; a failed build is retried on the next run. Pull requests produce artifacts without publishing releases. `build-info.txt` records all dependency commits separately from the installation archive.
 
 External repository releases cannot directly trigger this repository's workflow, so detection uses polling and may be delayed by GitHub's scheduler. On a new fork, enable Actions. GitHub may disable scheduled workflows in public repositories after 60 days without repository activity; re-enable the workflow if that occurs.
 
 ## Build locally
 
-Clone the plugin and these sibling directories: `mmsource-2.0` (the desired 2.0 release tag, recursive submodules), `hl2sdk-cs2` (branch `cs2`), `hl2sdk-manifests`, and `ambuild`. Install AMBuild with `python3 setup.py install`. In a Steam Runtime Sniper SDK container with Clang 16:
+Clone the plugin and these sibling directories: `mmsource-2.0` (the desired 2.0 release tag, recursive submodules), `hl2sdk-cs2` (`alliedmodders/s2sdk` at `81020d1a26b9d4321b9f030c96929ec18e8c0cff`), `hl2sdk-manifests`, and `ambuild`. Install AMBuild with `python3 setup.py install`. In a Steam Runtime Sniper SDK container with Clang 16:
 
 ```sh
 export CC=clang-16 CXX=clang++-16
